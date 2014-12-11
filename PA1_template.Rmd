@@ -1,25 +1,195 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "PA1_template.Rmd"
+author: "jspp"
+date: "10/12/2014"
+output: html_document
 ---
+# 
+# 
+#1-Loading and Tranforming Data
+###1.1- Loading data, including download
+data is downloaded in zip format, then extracted and then read into R
 
+```{r }
+download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",
+              "represearch/factivitydata.zip")
+unzip("represearch/factivitydata.zip", exdir = "represearch/.")
+activitydata <- (read.csv("represearch/activity.csv"))
+```
 
-## Loading and preprocessing the data
+###1.2- Transforming dates into date format
+initially dates are read as factor, here the class is changed
+```{r }
+activitydata$date <- as.Date (activitydata$date)
+```
 
+#2 Total Number of Steps every Day
+generates a variable that states the total steps, mean steps(by 5 min interval)
+and the number of missing values every day
 
+```{r }
+daily.steps.calc <- function()  {
+    total.steps <- tapply(activitydata$steps, activitydata$date, sum, na.rm = TRUE)
+    step.means <- tapply(activitydata$steps, activitydata$date, mean, na.rm = TRUE)
+    NA.count <- sapply(tapply(activitydata$steps, activitydata$date, is.na, 
+                              simplify = FALSE),sum, simplify = TRUE)
+    daily.steps <<- as.data.frame(cbind(total.steps, step.means, NA.count))
+}
+daily.steps.calc()
+```
+##2.1 Histogram
+loads ggplot2 and plots the histogram
+```{r}
+library(ggplot2)
+ggplot(daily.steps, aes (x=total.steps)) +
+        geom_histogram(binwidth = (max(daily.steps$total.steps)/8), 
+        colour = "black", fill= "white")
+```
 
-## What is mean total number of steps taken per day?
+###2.2 Mean and median 
+reports Mean, median and a couple of extra things for the total steps every day
 
+```{r}
+summary(daily.steps$total.steps)
+```
 
+#3 Average number of Steps per 5 min Interval
 
-## What is the average daily activity pattern?
+###Calculating the averages
 
+```{r }
+steps.interval <- as.data.frame(tapply(activitydata$steps, activitydata$interval,
+                         mean, na.rm = TRUE))
+steps.interval <- cbind(as.numeric(rownames(steps.interval)),steps.interval)
+colnames(steps.interval) <- c("Interval","Mean.Steps.in.Interval") 
+```
 
+###plot
+once aggain ggplot2 is loaded and the plot is generated
+```{r}
+library(ggplot2)
+g <- ggplot(steps.interval , aes(Interval,Mean.Steps.in.Interval)) 
+g + geom_line()
+```
 
-## Imputing missing values
+###maximum
+reports the maximum
+```{r}
+steps.interval[which.max(steps.interval$Mean.Steps.in.Interval),]
+```
 
+#4 Missing Values
 
+###4.1 SumNA's
+sums all the NA values we calculated before, in section 2
 
-## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+sum(daily.steps$NA.count)
+```
+
+Since data missing corresponds to complete days
+one cannot fill thw data with estimates from the day,
+therefor the approach whould be 
+using the mean for the 5 min Interval form other values
+    
+###4.2 Filling data in new dataset
+
+a copy of the data is generated, then means by each interval are calculated, 
+finaly taking means for the respective interval data is filled in the NA spaces
+
+```{r }
+activitydatafill <- activitydata
+activitydatafill$steps[is.na(activitydata$steps)] <- 
+        (tapply(activitydata$steps, activitydata$interval,mean, na.rm = TRUE))[
+        as.factor(activitydata$interval[is.na(activitydata$steps)])]
+```
+
+###4.3 Total Number of Steps every Day
+Equivalent to section 2 with the filled data
+
+```{r }
+daily.steps.calc.fill <- function()  {
+    total.steps <-  tapply(activitydatafill$steps, 
+                            activitydatafill$date, sum, na.rm = TRUE)
+    step.means <-   tapply(activitydatafill$steps, 
+                            activitydatafill$date, mean, na.rm = TRUE)
+    NA.count <- sapply(tapply(activitydatafill$steps, activitydatafill$date, 
+                              is.na, simplify = FALSE),sum, simplify = TRUE)
+    daily.steps.fill <<- as.data.frame(cbind(total.steps, step.means, NA.count))
+}
+daily.steps.calc.fill()
+```
+
+###4.4 -Makes Histogram
+
+```{r}
+library(ggplot2)
+ggplot(daily.steps.fill, aes (x=total.steps)) +
+    geom_histogram(binwidth = (max(daily.steps.fill$total.steps)/8), 
+                   colour = "black", fill= "white")
+```
+
+###4.5 reports mean, median and a couple of extra things
+
+```{r}
+summary(daily.steps.fill$total.steps)
+```
+
+compare with the data obtained without filling
+
+```{r}
+summary(daily.steps$total.steps)
+```
+
+it is possible to see there are differences in the two data sets looking at the
+mean, minimum value and 1st quartile.
+
+#5 Weekday-Weekend difference
+###5.1 Addition of extra factor column
+a collumn "weekday" is added with the factors "weekday" and "weekend" to state
+if the corresponding interval occurs on a weekday or a weekend
+```{r }
+weekdayaddition <- function() {
+    tweekdays <- c("Monday","Tuesday","Wednesday","Thursday","Friday")
+    tweekends <- c("Saturday","Sunday")
+    weekday <- weekdays(activitydatafill$date)
+    weekday[weekday %in% tweekdays] <- "weekday"
+    weekday[weekday %in% tweekends] <- "weekend"
+    activitydatafill <<- cbind(activitydatafill, weekday)
+}
+weekdayaddition()
+```
+
+### 5.2 Plot Grid between weekdays and weekends interval mean
+
+First data is separated insto weekdays and weekends, then means are calculated
+and finally data is merged aggain to be exported to the global environment
+
+Then ggplo2 is loaded and the graph is generated
+
+```{r cache = TRUE}
+interval.mean.by.weekday <- function() {
+    weekdays <- activitydatafill[activitydatafill$weekday == "weekday",]
+    weekends <- activitydatafill[activitydatafill$weekday == "weekend",]
+    step.inter.fill.wd <- tapply(weekdays$steps,weekdays$interval, mean)
+    step.inter.fill.wd <- data.frame(step.inter.fill.wd, 
+                                     as.numeric(rownames(step.inter.fill.wd)),
+                                     "weekdays")
+    step.inter.fill.ed <- tapply(weekends$steps,weekends$interval, mean)
+    step.inter.fill.ed <- data.frame(step.inter.fill.ed, 
+                                     as.numeric(rownames(step.inter.fill.ed)),
+                                     "weedkend")
+    colnames(step.inter.fill.wd)<-c("steps.mean", "interval","weekday")
+    colnames(step.inter.fill.ed)<-c("steps.mean", "interval","weekday")
+    step.inter.fill.wd$step<-as.numeric(step.inter.fill.wd$step)
+    step.inter.fill.ed$step<-as.numeric(step.inter.fill.ed$step)
+    intervalmeans <<- rbind(step.inter.fill.wd,step.inter.fill.ed)
+}
+interval.mean.by.weekday()
+
+library(ggplot2)
+pg <- ggplot(intervalmeans, aes(x = interval, y = steps.mean))+
+          geom_line() + facet_grid(weekday ~ .)
+pg
+```
+
